@@ -1,0 +1,524 @@
+
+# Import necessary libraries
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+from sklearn.model_selection import train_test_split
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import accuracy_score, classification_report, confusion_matrix, roc_curve, roc_auc_score
+from sklearn.preprocessing import LabelEncoder
+from sklearn.preprocessing import StandardScaler
+from sklearn.svm import SVC
+from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, confusion_matrix
+from sklearn.model_selection import train_test_split, cross_val_score, StratifiedKFold
+from sklearn.svm import SVC
+from sklearn.naive_bayes import GaussianNB
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, confusion_matrix
+from sklearn.datasets import make_classification
+import xgboost as xgb
+
+# Load dataset
+data = pd.read_csv('/content/ECU_IoHT.csv')
+
+data.head(5)    
+
+
+data.shape
+
+data.dropna(inplace=True)
+
+data.info()
+
+# Visualize the distribution of the target variable
+sns.countplot(x='Label', data=data)
+plt.title('Distribution of WUSTL-EHMS-2020 target (Label) dataset')
+plt.show()
+data.Label.value_counts()
+
+# Initialize LabelEncoder
+encoder = LabelEncoder()
+
+# Perform label encoding
+data['Attack Category'] = encoder.fit_transform(data['Attack Category'])
+data['Dir'] = encoder.fit_transform(data['Dir'])
+data['DIntPkt'] = encoder.fit_transform(data['DIntPkt'])
+
+# Split features and labels
+X = data.drop(['Label', 'Attack Category', 'Dir', 'Flgs', 'DstAddr', 'SrcAddr','SrcMac', 'DstMac', 'Sport',
+               'Dport', 'TotBytes', 'dMaxPktSz', 'sMaxPktSz', 'DstGap', 'SrcGap', 'Trans'], axis=1)
+y = data['Label']
+
+
+#use SMOTE for to mitigate data imbalnce
+from imblearn.over_sampling import SMOTE
+X_smote, y_smote = SMOTE().fit_resample(X, y)
+
+#split dataset into testing and training data using 80/20 ratio
+from sklearn.metrics import accuracy_score, confusion_matrix, classification_report
+from sklearn.model_selection import train_test_split
+X_train, X_test, y_train, y_test = train_test_split(X_smote, y_smote, test_size=0.2, random_state = 42)
+
+
+#use the standard scaler to scale all entries
+from sklearn.preprocessing import StandardScaler
+scaling = StandardScaler()
+X_train = scaling.fit_transform(X_train)
+X_test = scaling.transform(X_test)
+
+# Train the RF model
+rf_model = RandomForestClassifier(n_estimators=100, random_state=42)
+rf_model.fit(X_train, y_train)
+
+importances = rf_model.feature_importances_
+
+# Sort feature importance and get indices
+indices = np.argsort(importances)[::-1]
+
+# Print the feature ranking according to their importance for IDS decisionmaking
+print("Feature ranking:")
+for f in range(X.shape[1]):
+    print(f"{f + 1}. Feature '{X.columns[indices[f]]}': {importances[indices[f]]:.4f}")
+
+#  Visualize the feature importances of the dataset
+plt.figure(figsize=(12, 6))
+plt.title("Feature Importances in WUSTL-EHMS-2020 dataset")
+plt.bar(range(X.shape[1]), importances[indices], align="center")
+plt.xticks(range(X.shape[1]), X.columns[indices], rotation=90)
+plt.xlim([-1, X.shape[1]])
+plt.ylabel('Importance')
+plt.xlabel('Features')
+plt.show()
+
+# Make predictions with the RF classifier
+rf_pred = rf_model.predict(X_test)
+
+#declare the performance evaluation metrics for RF
+accuracy_rf = accuracy_score(y_test, rf_pred)
+precision_rf = precision_score(y_test, rf_pred)
+recall_rf = recall_score(y_test, rf_pred)
+f1_rf = f1_score(y_test, rf_pred)
+cm_rf = confusion_matrix(y_test, rf_pred)
+
+# Classification Report for RF
+print("Classification Report for random forest (WUSTL-EHMS-2020):")
+print(classification_report(y_test, rf_pred))
+
+
+# print ROC AUC Score for RF
+roc_auc_rf = roc_auc_score(y_test, rf_pred)
+print(f"\nROC AUC Score for Random Forest (WUSTL-EHMS-2020): {roc_auc_rf}")
+
+# Plot ROC Curve for RF
+fpr_rf, tpr_rf, _ = roc_curve(y_test, rf_pred)
+plt.figure()
+plt.plot(fpr_rf, tpr_rf, color='darkorange', lw=2, label=f'Random Forest (AUC = {roc_auc_rf:.2f})')
+plt.plot([0, 1], [0, 1], color='navy', lw=2, linestyle='--')
+plt.xlim([0.0, 1.0])
+plt.ylim([0.0, 1.05])
+plt.xlabel('False Positive Rate')
+plt.ylabel('True Positive Rate')
+plt.title('Random Forest ROC Curve (WUSTL-EHMS-2020)')
+plt.legend(loc="lower right")
+plt.show()
+
+
+#print performace evaluation and confusion matrix for RF
+print(f'Random Forest Classifier (WUSTL-EHMS-2020):\n Accuracy: {accuracy_rf}\n Precision: {precision_rf}\n Recall: {recall_rf}\n F1 Score: {f1_rf}')
+sns.heatmap(cm_rf, annot=True, fmt='d', cmap='Blues')
+plt.title('Random Forest Confusion Matrix (WUSTL-EHMS-2020)')
+plt.show()
+
+# Create an XGBoost classifier
+xgb_model = xgb.XGBClassifier(eval_metric='logloss')
+
+# Fit the model to the training data
+xgb_model.fit(X_train, y_train)
+
+
+# Make predictions on the test set
+xgb_pred = xgb_model.predict(X_test)
+
+#declare the performance evaluation metrics for XGB
+accuracy_xgb = accuracy_score(y_test, xgb_pred)
+precision_xgb = precision_score(y_test, xgb_pred)
+recall_xgb = recall_score(y_test, xgb_pred)
+f1_xgb = f1_score(y_test, xgb_pred)
+cm_xgb = confusion_matrix(y_test, xgb_pred)
+
+
+# Classification Report for XGB
+print("Classification Report for XGB (WUSTL-EHMS-2020):")
+print(classification_report(y_test, xgb_pred))
+
+# print ROC AUC Score for XGB
+roc_auc_xgb = roc_auc_score(y_test, xgb_pred)
+print(f"\nROC AUC Score for Extreme Gradient Boosting (WUSTL-EHMS-2020): {roc_auc_xgb}")
+
+# Plot ROC Curve
+fpr_xgb, tpr_xgb, _ = roc_curve(y_test, xgb_pred)
+plt.figure()
+plt.plot(fpr_xgb, tpr_xgb, color='darkorange', lw=2, label=f'Extreme Gradient Boosting (AUC = {roc_auc_xgb:.2f})')
+plt.plot([0, 1], [0, 1], color='navy', lw=2, linestyle='--')
+plt.xlim([0.0, 1.0])
+plt.ylim([0.0, 1.05])
+plt.xlabel('False Positive Rate')
+plt.ylabel('True Positive Rate')
+plt.title('XGB ROC Curve (WUSTL-EHMS-2020)')
+plt.legend(loc="lower right")
+plt.show()
+
+
+#print confusion matrix and performance evaluation metrics for XGB
+print(f'Extreme Gradient Boosting (WUSTL-EHMS-2020):\n Accuracy: {accuracy_xgb}\n Precision: {precision_xgb}\n Recall: {recall_xgb}\n F1 Score: {f1_xgb}')
+sns.heatmap(cm_xgb, annot=True, fmt='d', cmap='Blues')
+plt.title('Extreme Gradient Boosting Matrix (WUSTL-EHMS-2020)')
+plt.show()
+
+
+#train the LR model
+lr_model = LogisticRegression(max_iter=1000, random_state=42)
+lr_model.fit(X_train, y_train)
+
+
+#make predictions with the LR model
+lr_pred = lr_model.predict(X_test)
+
+
+#declare performance evaluation metrics for LR
+accuracy_lr = accuracy_score(y_test, lr_pred)
+precision_lr = precision_score(y_test, lr_pred)
+recall_lr = recall_score(y_test, lr_pred)
+f1_lr = f1_score(y_test, lr_pred)
+cm_lr = confusion_matrix(y_test, lr_pred)
+
+
+# Classification Report for LR
+print("Classification Report for lr (WUSTL-EHMS-2020):")
+print(classification_report(y_test, lr_pred))
+
+
+# print ROC AUC Score for LR
+roc_auc_lr = roc_auc_score(y_test, lr_pred)
+print(f"\nROC AUC Score for Logistic Regression (WUSTL-EHMS-2020): {roc_auc_lr}")
+
+# Plot ROC Curve for LR
+fpr_lr, tpr_lr, _ = roc_curve(y_test, lr_pred)
+plt.figure()
+plt.plot(fpr_lr, tpr_lr, color='darkorange', lw=2, label=f'Logistic Regression (AUC = {roc_auc_lr:.2f})')
+plt.plot([0, 1], [0, 1], color='navy', lw=2, linestyle='--')
+plt.xlim([0.0, 1.0])
+plt.ylim([0.0, 1.05])
+plt.xlabel('False Positive Rate')
+plt.ylabel('True Positive Rate')
+plt.title('Logistic Regression ROC Curve (WUSTL-EHMS-2020)')
+plt.legend(loc="lower right")
+plt.show()
+
+
+#print performance evaluation metrcs and confusion matrix for LR
+print(f'Logistic Regression Classifier (WUSTL-EHMS-2020):\n Accuracy: {accuracy_lr}\n Precision: {precision_lr}\n Recall: {recall_lr}\n F1 Score: {f1_lr}')
+sns.heatmap(cm_lr, annot=True, fmt='d', cmap='Blues')
+plt.title('Logistic Regression Matrix (WUSTL-EHMS-2020)')
+plt.show()
+
+
+# train the Support Vector Machine
+svm_model = SVC(random_state=42)
+svm_model.fit(X_train, y_train)
+
+
+
+#predict with svm
+svm_pred = svm_model.predict(X_test)
+
+
+# declare performance evaluation  metrics for svm
+accuracy_svm = accuracy_score(y_test, svm_pred)
+precision_svm = precision_score(y_test, svm_pred)
+recall_svm = recall_score(y_test, svm_pred)
+f1_svm = f1_score(y_test, svm_pred)
+cm_svm = confusion_matrix(y_test, svm_pred)
+
+
+# Classification Report for svm
+print("Classification Report for svm (WUSTL-EHMS-2020):")
+print(classification_report(y_test, svm_pred))
+
+
+# print ROC AUC Score for svm
+roc_auc_svm = roc_auc_score(y_test, svm_pred)
+print(f"\nROC AUC Score for SVM (WUSTL-EHMS-2020): {roc_auc_svm}")
+
+# Plot ROC Curve for svm
+fpr_svm, tpr_svm, _ = roc_curve(y_test, svm_pred)
+plt.figure()
+plt.plot(fpr_svm, tpr_svm, color='darkorange', lw=2, label=f'Support Vector Machine (AUC = {roc_auc_svm:.2f})')
+plt.plot([0, 1], [0, 1], color='navy', lw=2, linestyle='--')
+plt.xlim([0.0, 1.0])
+plt.ylim([0.0, 1.05])
+plt.xlabel('False Positive Rate')
+plt.ylabel('True Positive Rate')
+plt.title('SVM ROC Curve (WUSTL-EHMS-2020)')
+plt.legend(loc="lower right")
+plt.show()
+
+
+#print confusion matrix and performance evaluation metrics for svm
+print(f'Support Vector Machine (WUSTL-EHMS-2020):\n Accuracy: {accuracy_svm}\n Precision: {precision_svm}\n Recall: {recall_svm}\n F1 Score: {f1_svm}')
+sns.heatmap(cm_svm, annot=True, fmt='d', cmap='Blues')
+plt.title('Support Vector Machine Confusion Matrix (WUSTL-EHMS-2020)')
+plt.show()
+
+
+import tensorflow as tf
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import Dense, Dropout
+from sklearn.metrics import classification_report, roc_auc_score, roc_curve, confusion_matrix, ConfusionMatrixDisplay
+
+
+# Split training data into train and validation sets
+X_train_ann, X_val, y_train_ann, y_val = train_test_split(X_train, y_train, test_size=0.2, random_state=42)
+
+
+# Define the ANN model architecture
+ann_model = Sequential()
+ann_model.add(Dense(units=64, activation='relu', input_shape=(X_train.shape[1],)))  # First hidden layer
+ann_model.add(Dropout(0.2))  # Optional dropout for regularization
+ann_model.add(Dense(units=32, activation='relu'))  # Second hidden layer
+ann_model.add(Dense(units=1, activation='sigmoid'))  # Output layer for binary classification
+
+
+# Compile the ANN model
+ann_model.compile(optimizer='adam', loss='binary_crossentropy', metrics=['accuracy'])
+
+
+# Train the ANN model with validation data
+history_ann = ann_model.fit(X_train_ann, y_train_ann, epochs=10, batch_size=32, validation_data=(X_val, y_val))
+
+
+# Make predictions on the test set
+ann_pred = (ann_model.predict(X_test) > 0.5).astype("int32")
+
+
+# Classification Report for ANN
+print("Classification Report for ANN (WUSTL-EHMS-2020):")
+print(classification_report(y_test, ann_pred))
+
+
+#declare performance evaluation metrics for ANN
+accuracy_ann = accuracy_score(y_test, ann_pred)
+precision_ann = precision_score(y_test, ann_pred)
+recall_ann = recall_score(y_test, ann_pred)
+f1_ann = f1_score(y_test, ann_pred)
+cm_ann = confusion_matrix(y_test, ann_pred)
+
+
+#priint confusion matrix and performance evaluation metrics for ANN
+print(f'Artificial Neural Network (WUSTL-EHMS-2020):\n Accuracy: {accuracy_ann}\n Precision: {precision_ann}\n Recall: {recall_ann}\n F1 Score: {f1_ann}')
+sns.heatmap(cm_ann, annot=True, fmt='d', cmap='Blues')
+plt.title('ANN Confusion Matrix (WUSTL-EHMS-2020)')
+plt.show()
+
+
+# print ROC AUC Score forANN
+roc_auc_ann = roc_auc_score(y_test, ann_pred)
+print(f"\nROC AUC Score for ANN (WUSTL-EHMS-2020): {roc_auc_ann}")
+
+# Plot ROC Curve for ANN
+fpr_ann, tpr_ann, _ = roc_curve(y_test, ann_pred)
+plt.figure()
+plt.plot(fpr_ann, tpr_ann, color='darkorange', lw=2, label=f'Artificial Neural Network (AUC = {roc_auc_ann:.2f})')
+plt.plot([0, 1], [0, 1], color='navy', lw=2, linestyle='--')
+plt.xlim([0.0, 1.0])
+plt.ylim([0.0, 1.05])
+plt.xlabel('False Positive Rate')
+plt.ylabel('True Positive Rate')
+plt.title('ANN ROC Curve (WUSTL-EHMS-2020)')
+plt.legend(loc="lower right")
+plt.show()
+
+
+import pandas as pd
+import numpy as np
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import MinMaxScaler
+from sklearn.metrics import classification_report, confusion_matrix, ConfusionMatrixDisplay
+import matplotlib.pyplot as plt
+import tensorflow as tf
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import LSTM, Dense, Dropout
+
+X_train_reshaped = np.array(X_train).reshape(X_train.shape[0], 1, X_train.shape[1])
+X_val_reshaped = np.array(X_val).reshape(X_val.shape[0], 1, X_val.shape[1])
+X_test_reshaped = np.array(X_test).reshape(X_test.shape[0], 1, X_test.shape[1])
+
+
+
+# Define the LSTM model architecture
+lstm_model = Sequential()
+lstm_model.add(LSTM(units=50, return_sequences=True, input_shape=(X_train_reshaped.shape[1], X_train_reshaped.shape[2]))) # Use the reshaped input shape
+lstm_model.add(Dropout(0.2))
+lstm_model.add(LSTM(units=50))
+lstm_model.add(Dropout(0.2))
+lstm_model.add(Dense(units=1, activation='sigmoid'))  # Binary classification
+
+
+
+
+# Compile the LSTM model
+lstm_model.compile(optimizer='adam', loss='binary_crossentropy', metrics=['accuracy'])
+
+# Train the LSTM model
+history_lstm = lstm_model.fit(X_train_reshaped, y_train, epochs=10, batch_size=32, validation_data=(X_val_reshaped, y_val))
+
+
+
+# Make predictions (use the reshaped test data)
+lstm_pred = (lstm_model.predict(X_test_reshaped) > 0.5).astype("int32")
+
+# Classification Report for LSTM
+print("Classification Report for LSTM (WUSTL-EHMS-2020):")
+print(classification_report(y_test, lstm_pred))
+
+
+#declareperformance evaluation metrics for LSTM
+accuracy_lstm = accuracy_score(y_test, lstm_pred)
+precision_lstm = precision_score(y_test, lstm_pred)
+recall_lstm = recall_score(y_test, lstm_pred)
+f1_lstm = f1_score(y_test, lstm_pred)
+cm_lstm = confusion_matrix(y_test, lstm_pred)
+
+
+#print performance evaluation metrics and confusion matrix for LSTM
+print(f'LSTM:\n Accuracy (WUSTL-EHMS-2020): {accuracy_lstm}\n Precision: {precision_lstm}\n Recall: {recall_lstm}\n F1 Score: {f1_lstm}')
+sns.heatmap(cm_ann, annot=True, fmt='d', cmap='Blues')
+plt.title('LSTM Confusion Matrix (WUSTL-EHMS-2020)')
+plt.show()
+
+
+
+
+# print ROC AUC Score for LSTM
+roc_auc_lstm = roc_auc_score(y_test, lstm_pred)
+print(f"\nROC AUC Score for LSTM (WUSTL-EHMS-2020): {roc_auc_lstm}")
+
+# Plot ROC Curve for LSTM
+fpr_lstm, tpr_lstm, _ = roc_curve(y_test, lstm_pred)
+plt.figure()
+plt.plot(fpr_lstm, tpr_lstm, color='darkorange', lw=2,label=f'Long Short Term Memory (AUC = {roc_auc_lstm:.2f})')
+plt.plot([0, 1], [0, 1], color='navy', lw=2, linestyle='--')
+plt.xlim([0.0, 1.0])
+plt.ylim([0.0, 1.05])
+plt.xlabel('False Positive Rate')
+plt.ylabel('True Positive Rate')
+plt.title('LSTM ROC Curve (WUSTL-EHMS-2020)')
+plt.legend(loc="lower right")
+plt.show()
+
+
+
+import numpy as np
+from sklearn.datasets import make_classification
+from sklearn.model_selection import train_test_split
+from sklearn.ensemble import RandomForestClassifier, StackingClassifier
+from xgboost import XGBClassifier
+from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
+
+
+# Define base learners for the ensemble model
+base_learners = [
+    ('rf', RandomForestClassifier(n_estimators=100)),
+    ('xgb', xgb.XGBClassifier(eval_metric='logloss'))
+]
+
+
+# Define meta-learner for the ensemble model
+meta_learner = SVC(probability=True)
+
+# Create the stacking classifier
+stacking_clf = StackingClassifier(
+    estimators=base_learners,
+    final_estimator=meta_learner,
+    cv=5  # Cross-validation splitting strategy
+)
+
+
+# Step 5: Train the stacking classifier for the ensemble model
+stacking_clf.fit(X_train, y_train)
+
+
+
+# Make predictions for the ensemble model
+ensemble_pred = stacking_clf.predict(X_test)
+
+
+# Classification Report for the ensemble model
+print("Classification Report (WUSTL-EHMS-2020):")
+print(classification_report(y_test, ensemble_pred))
+
+
+#declare performance evaluation variables for the ensemble model
+accuracy_ensemble_model = accuracy_score(y_test, ensemble_pred)
+precision_ensemble_model = precision_score(y_test, ensemble_pred)
+recall_ensemble_model = recall_score(y_test, ensemble_pred)
+f1_ensemble_model = f1_score(y_test, ensemble_pred)
+cm_ensemble_model = confusion_matrix(y_test, ensemble_pred)
+
+
+# print ROC AUC Score forthe ensemble model
+roc_auc_ensemble = roc_auc_score(y_test, ensemble_pred)
+print(f"\nROC AUC Score for Ensemble Model Classifier (WUSTL-EHMS-2020): {roc_auc_ensemble}")
+
+# Plot ROC Curve for the ensemble model
+fpr_ensemble, tpr_ensemble, _ = roc_curve(y_test, ensemble_pred)
+plt.figure()
+plt.plot(fpr_ensemble, tpr_ensemble, color='darkorange', lw=2, label=f'Ensemble Cyber Attack Detector  (AUC = {roc_auc_ensemble:.2f})')
+plt.plot([0, 1], [0, 1], color='navy', lw=2, linestyle='--')
+plt.xlim([0.0, 1.0])
+plt.ylim([0.0, 1.05])
+plt.xlabel('False Positive Rate')
+plt.ylabel('True Positive Rate')
+plt.title('Ensemble Model Classifier Curve (WUSTL-EHMS-2020)')
+plt.legend(loc="lower right")
+plt.show()
+
+
+#print confusionmatrix and performance evaluation metrics
+print(f'Ensemble_model (WUSTL-EHMS-2020):\n Accuracy: {accuracy_ensemble_model}\n Precision: {precision_ensemble_model}\n Recall: {recall_ensemble_model}\n F1 Score: {f1_ensemble_model}')
+sns.heatmap(cm_ensemble_model, annot=True, fmt='d', cmap='Blues')
+plt.title('Confusion Matrix Ensemble CyberAttack Detector Classifier (WUSTL-EHMS-2020)')
+plt.show()
+
+
+
+
+#  Plot ROC curves for all of the models deployed
+plt.figure(figsize=(10, 6))
+plt.plot(fpr_rf, tpr_rf, color='blue', lw=2, label=f'Random Forest (AUC = {roc_auc_rf:.2f})')
+plt.plot(fpr_xgb, tpr_xgb, color='orange', lw=2, label=f'Extreme Gradient Boosting (AUC = {roc_auc_xgb:.2f})')
+plt.plot(fpr_svm, tpr_svm, color='green', lw=2, label=f'Support Vector Machine (AUC = {roc_auc_svm:.2f})')
+plt.plot(fpr_lr, tpr_lr, color='purple', lw=2, label=f'Logistic Regression (AUC = {roc_auc_lr:.2f})')
+plt.plot(fpr_ann, tpr_ann, color='brown', lw=2, label=f'Artificial Neural Network (AUC = {roc_auc_ann:.2f})')
+plt.plot(fpr_lstm, tpr_lstm, color='grey', lw=2, label=f'Long Short Term Memory (AUC = {roc_auc_lstm:.2f})')
+plt.plot(fpr_ensemble, tpr_ensemble, color='yellow', lw=2, label=f'Ensemble Cyber Attack Detector  (AUC = {roc_auc_ensemble:.2f})')
+plt.plot([0, 1], [0, 1], color='red', linestyle='--')  # Diagonal line
+plt.xlim([0.0, 1.0])
+plt.ylim([0.0, 1.0])
+plt.xlabel('False Positive Rate')
+plt.ylabel('True Positive Rate')
+plt.title('Receiver Operating Characteristic (ROC) Curves comparing algorithms deployed')
+plt.legend(loc='lower right')
+plt.grid()
+plt.show()
+
+
+
+
+
+
+
+
